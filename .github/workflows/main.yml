@@ -1,0 +1,34 @@
+name: SSL Expiry Checker
+
+on:
+  schedule:
+    - cron: '0 0 * * *' # Schedule to run daily at midnight UTC
+
+jobs:
+  check-ssl-expiry:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y openssl
+
+      - name: Check SSL expiry
+        run: |
+          EXPIRY_DATE=$(openssl s_client -servername yourdomain.com -connect yourdomain.com:443 </dev/null 2>/dev/null | openssl x509 -noout -dates | grep "notAfter" | cut -d "=" -f 2)
+          EXPIRY_TIMESTAMP=$(date -d "$EXPIRY_DATE" +%s)
+          CURRENT_TIMESTAMP=$(date +%s)
+          EXPIRY_IN_DAYS=$(( ($EXPIRY_TIMESTAMP - $CURRENT_TIMESTAMP) / 86400 ))
+
+          echo "SSL certificate for yourdomain.com expires in $EXPIRY_IN_DAYS days."
+
+      - name: Send Slack notification
+        if: ${{ steps.check-ssl-expiry.outcome == 'success' }}
+        run: |
+          curl -X POST -H 'Content-type: application/json' --data '{
+            "text": "SSL certificate for yourdomain.com expires in '"$EXPIRY_IN_DAYS"' days."
+          }' ${{ secrets.SLACK_WEBHOOK_URL }}
